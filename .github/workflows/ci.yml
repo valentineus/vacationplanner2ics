@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    name: Test and publish
+    if: github.server_url == 'https://github.com' && github.repository == 'valentineus/vacationplanner2ics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/valentineus/vacationplanner2ics
+      TEST_IMAGE: vacationplanner2ics-test:ci-${{ github.run_id }}
+      SMOKE_CONTAINER: vacationplanner2ics-ci-${{ github.run_id }}
+      REVISION: ${{ github.sha }}
+      REF: ${{ github.ref }}
+      SOURCE: ${{ github.server_url }}/${{ github.repository }}
+      DOCKER_BUILDKIT: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check Docker
+        run: docker version
+
+      - name: Check formatting, lint and build the release binary
+        run: docker build --target test --tag "$TEST_IMAGE" .
+
+      - name: Run E2E tests without network access
+        run: >-
+          docker run --rm --network none --read-only
+          --cap-drop ALL --security-opt no-new-privileges
+          --memory 256m --cpus 2 --pids-limit 128 "$TEST_IMAGE"
+
+      - name: Build the runtime image from the tested binary
+        run: >-
+          docker build --target runtime
+          --label "org.opencontainers.image.revision=$REVISION"
+          --label "org.opencontainers.image.source=$SOURCE"
+          --tag "$IMAGE:sha-$REVISION" .
+
+      - name: Smoke-test the runtime image
+        run: |
+          set -eu
+          docker run -d --name "$SMOKE_CONTAINER" --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --memory 32m --cpus 1 --pids-limit 64 "$IMAGE:sha-$REVISION"
+          docker run --rm --network "container:$SMOKE_CONTAINER" --read-only \
+            --cap-drop ALL --security-opt no-new-privileges "$TEST_IMAGE" python -c '
+          import time, urllib.request
+          for attempt in range(50):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=1) as response:
+                      assert response.status == 200 and response.read() == b"ok"
+                  break
+              except OSError:
+                  if attempt == 49:
+                      raise
+                  time.sleep(0.1)
+          print("Runtime HTTP smoke test passed")'
+          docker image inspect --format 'Image size: {{.Size}} bytes' "$IMAGE:sha-$REVISION"
+          docker stats --no-stream --format 'Memory: {{.MemUsage}}; CPU: {{.CPUPerc}}' "$SMOKE_CONTAINER"
+          docker stop --time 5 "$SMOKE_CONTAINER"
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$SMOKE_CONTAINER")" = 0
+
+      - name: Publish to GitHub Container Registry
+        if: >-
+          github.event_name != 'pull_request' &&
+          (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          set -eu
+          export DOCKER_CONFIG
+          DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          docker push "$IMAGE:sha-$REVISION"
+          if [ "$REF" = refs/heads/master ]; then
+            docker tag "$IMAGE:sha-$REVISION" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          else
+            docker tag "$IMAGE:sha-$REVISION" "$IMAGE:${REF#refs/tags/}"
+            docker push "$IMAGE:${REF#refs/tags/}"
+          fi
+
+      - name: Remove temporary containers and image tags
+        if: always()
+        run: |
+          docker rm -f "$SMOKE_CONTAINER" 2>/dev/null || true
+          docker image rm "$TEST_IMAGE" "$IMAGE:sha-$REVISION" 2>/dev/null || true
