@@ -1,0 +1,36 @@
+[Unit]
+Description=Vacationplanner calendar subscriptions
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/var/lib/containers/storage
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=all
+Environment=PODMAN_SYSTEMD_UNIT=%n
+RuntimeDirectory=vacationplanner
+RuntimeDirectoryMode=0700
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+TimeoutStopSec=80
+ExecStart=/usr/bin/podman run --detach --rm --replace \
+    --name vacationplanner --cidfile=/run/vacationplanner/container.cid \
+    --cgroups=no-conmon --sdnotify=conmon --pull=missing \
+    --label=io.containers.autoupdate=registry \
+    --network=host --env=BIND_ADDR=127.0.0.1:8080 \
+    --user=65532:65532 --read-only --read-only-tmpfs=false \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --memory=128m --memory-swap=128m --cpus=0.5 --pids-limit=64 \
+    --stop-timeout=65 --log-driver=none \
+    code.popov.link/valentineus/vacationplanner2ics:latest
+ExecStartPost=/usr/bin/curl --fail --silent --show-error \
+    --retry 20 --retry-all-errors --retry-delay 1 --retry-max-time 45 \
+    --connect-timeout 1 --max-time 2 --output /dev/null \
+    http://127.0.0.1:8080/healthz
+ExecStop=-/usr/bin/podman stop --ignore --time=65 --cidfile=/run/vacationplanner/container.cid
+ExecStopPost=-/usr/bin/podman rm --force --ignore --cidfile=/run/vacationplanner/container.cid
+
+[Install]
+WantedBy=multi-user.target

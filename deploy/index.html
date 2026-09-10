@@ -1,0 +1,50 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=us-ascii">
+    <title>Vacationplanner calendar subscriptions</title>
+</head>
+<body>
+    <h1>Vacationplanner calendar subscriptions</h1>
+    <p>This service turns Vacationplanner vacations into an iCalendar
+    subscription for Apple Calendar and other calendar applications.</p>
+
+    <h2>Usage</h2>
+    <p>Add a calendar subscription using the following URL. Replace
+    <code>YOUR_API_TOKEN</code> with your Vacationplanner API token and
+    URL-encode its value.</p>
+    <pre>https://vacationplanner.popov.link/calendar.ics?token=YOUR_API_TOKEN</pre>
+    <dl>
+        <dt><code>token</code></dt>
+        <dd>Required: your Vacationplanner API token.</dd>
+        <dt><code>years</code></dt>
+        <dd>Optional: comma-separated years. The default is the current UTC
+        year and the next year. Up to 10 distinct years from 1 to 9998 are
+        accepted; duplicate years are removed.</dd>
+    </dl>
+    <p>To select years explicitly:</p>
+    <pre>https://vacationplanner.popov.link/calendar.ics?token=YOUR_API_TOKEN&amp;years=2026,2027,2028</pre>
+    <p>The calendar application controls the refresh interval. Occasional
+    requests from several devices are supported; frequent requests may be
+    rate limited. Keep the subscription URL private.</p>
+
+    <h2>Privacy and self-hosting</h2>
+    <p><strong>Self-hosting is recommended.</strong> Do not blindly trust
+    any hosted instance, including this one. The subscription URL contains
+    your API token. Service operators and providers that terminate HTTPS
+    can read it. HTTPS does not hide the token from those operators.</p>
+    <p>The service does not store calendars or log requests. Query-string
+    logging is disabled on this server, but this does not guarantee privacy
+    across the infrastructure. Prefer a server you control and replace
+    the host in the example URLs with your own.</p>
+    <p>The repositories below contain source code, ready-made container
+    image links and self-hosting instructions.</p>
+
+    <hr>
+    <p>Repository locations:
+    <a href="https://code.popov.link/valentineus/vacationplanner2ics">canonical source</a>
+    &middot; <a href="https://github.com/valentineus/vacationplanner2ics">github</a>
+    &middot; <a href="https://git.popov.link/popov.link/vacationplanner2ics/">read-only mirror</a></p>
+</body>
+</html>
