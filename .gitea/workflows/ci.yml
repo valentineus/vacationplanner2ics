@@ -22,6 +22,7 @@ jobs:
     env:
       IMAGE: code.popov.link/valentineus/vacationplanner2ics
       TEST_IMAGE: vacationplanner2ics-test:ci-${{ gitea.run_id }}
+      RUNTIME_IMAGE: vacationplanner2ics-runtime:ci-${{ gitea.run_id }}
       SMOKE_CONTAINER: vacationplanner2ics-ci-${{ gitea.run_id }}
       REVISION: ${{ gitea.sha }}
       REF: ${{ gitea.ref }}
@@ -47,14 +48,14 @@ jobs:
         run: >-
           docker build --target runtime
           --label "org.opencontainers.image.revision=$REVISION"
-          --tag "$IMAGE:sha-$REVISION" .
+          --tag "$RUNTIME_IMAGE" .
 
       - name: Smoke-test the runtime image
         run: |
           set -eu
           docker run -d --name "$SMOKE_CONTAINER" --network none --read-only \
             --cap-drop ALL --security-opt no-new-privileges \
-            --memory 32m --cpus 1 --pids-limit 64 "$IMAGE:sha-$REVISION"
+            --memory 32m --cpus 1 --pids-limit 64 "$RUNTIME_IMAGE"
           docker run --rm --network "container:$SMOKE_CONTAINER" --read-only \
             --cap-drop ALL --security-opt no-new-privileges "$TEST_IMAGE" python -c '
           import time, urllib.request
@@ -68,7 +69,7 @@ jobs:
                       raise
                   time.sleep(0.1)
           print("Runtime HTTP smoke test passed")'
-          docker image inspect --format 'Image size: {{.Size}} bytes' "$IMAGE:sha-$REVISION"
+          docker image inspect --format 'Image size: {{.Size}} bytes' "$RUNTIME_IMAGE"
           docker stats --no-stream --format 'Memory: {{.MemUsage}}; CPU: {{.CPUPerc}}' "$SMOKE_CONTAINER"
           docker stop --time 5 "$SMOKE_CONTAINER"
           test "$(docker inspect --format '{{.State.ExitCode}}' "$SMOKE_CONTAINER")" = 0
@@ -89,17 +90,16 @@ jobs:
           DOCKER_CONFIG="$(mktemp -d)"
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
           printf '%s' "$REGISTRY_TOKEN" | docker login code.popov.link --username valentineus --password-stdin
-          docker push "$IMAGE:sha-$REVISION"
           if [ "$REF" = refs/heads/master ]; then
-            docker tag "$IMAGE:sha-$REVISION" "$IMAGE:latest"
-            docker push "$IMAGE:latest"
+            TAG=latest
           else
-            docker tag "$IMAGE:sha-$REVISION" "$IMAGE:${REF#refs/tags/}"
-            docker push "$IMAGE:${REF#refs/tags/}"
+            TAG="${REF#refs/tags/v}"
           fi
+          docker tag "$RUNTIME_IMAGE" "$IMAGE:$TAG"
+          docker push "$IMAGE:$TAG"
 
       - name: Remove temporary containers and image tags
         if: always()
         run: |
           docker rm -f "$SMOKE_CONTAINER" 2>/dev/null || true
-          docker image rm "$TEST_IMAGE" "$IMAGE:sha-$REVISION" 2>/dev/null || true
+          docker image rm "$TEST_IMAGE" "$RUNTIME_IMAGE" 2>/dev/null || true

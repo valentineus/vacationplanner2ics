@@ -17,8 +17,8 @@ builds and publishes its own image:
 Available tags:
 
 - `latest`: the latest successful `master` build on that platform.
-- `sha-<full-commit-sha>`: the tested commit.
-- `v*`: the corresponding Git tag; does not overwrite `latest`.
+- Git tags starting with `v` publish without that prefix: `v2026.01.02` → `2026.01.02`.
+  Versioned builds do not overwrite `latest`.
 
 Pull from GitHub:
 
