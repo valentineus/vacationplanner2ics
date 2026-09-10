@@ -1,0 +1,25 @@
+name: Renovate
+
+on:
+  schedule:
+    - cron: '@daily'
+  workflow_dispatch:
+
+jobs:
+  renovate:
+    name: Update dependencies
+    runs-on: ubuntu-latest
+    container: ghcr.io/renovatebot/renovate:44
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run Renovate
+        run: renovate
+        env:
+          GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_TOKEN }}
+          LOG_LEVEL: ${{ vars.RENOVATE_LOG_LEVEL || 'info' }}
+          RENOVATE_CONFIG_FILE: renovate.config.cjs
+          RENOVATE_REPOSITORIES: ${{ gitea.repository }}
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
