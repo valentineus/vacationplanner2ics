@@ -6,7 +6,14 @@ It only calls `GET /v1/vacations/year/{year}`.
 
 ## Run
 
-Requires Docker with Docker Compose.
+Run the published `linux/amd64` image:
+
+```sh
+docker run -d --name vacationplanner2ics --restart unless-stopped --read-only \
+  -p 127.0.0.1:8080:8080 code.popov.link/packager/vacationplanner2ics:latest
+```
+
+Or build from source with Docker Compose (also works natively on ARM64):
 
 ```sh
 docker compose up -d --build app
@@ -14,6 +21,9 @@ docker compose up -d --build app
 
 The service listens on `127.0.0.1:8080`. `GET /healthz` returns `ok`.
 For public access, put an HTTPS reverse proxy in front of it.
+The image serves HTTP only. Its `scratch` filesystem contains a static musl binary
+and CA certificates for outgoing HTTPS requests, with no shell or package manager.
+It runs as an unprivileged user.
 
 ## Subscribe
 
@@ -84,6 +94,28 @@ The four E2E tests run the release binary against a local mock API, with network
 access disabled. They cover calendar parsing with an independent iCalendar
 library, year selection, input/upstream failures and subscription updates.
 Tests use fake credentials only.
+
+## CI and dependency updates
+
+[Gitea Actions](https://code.popov.link/valentineus/vacationplanner2ics/actions)
+runs one CI workflow for `master` pushes, pull requests, `v*` tags and manual runs: formatting,
+Clippy with warnings denied, release compilation, the four E2E tests without
+network access, and an HTTP/shutdown check of the actual runtime image.
+Only successful `master` builds and `v*` tags publish images to
+`code.popov.link/packager/vacationplanner2ics`:
+
+- `latest`: the latest successful `master` build.
+- `sha-<full-commit-sha>`: the tested commit.
+- `v*`: the corresponding Git tag; does not overwrite `latest`.
+
+CI uses the runner's native AMD64 architecture, reuses BuildKit/Cargo caches,
+limits compilation to two jobs and packages the already-tested binary.
+Publishing requires the Actions secret `REGISTRY_TOKEN`, belonging to `packager`
+with `write:package` permission. No Vacationplanner token is used in CI.
+
+Renovate runs daily or manually, using `RENOVATE_TOKEN` for Gitea and
+`RENOVATE_GITHUB_TOKEN` for dependency metadata. Non-major updates are grouped;
+updates require review and are not merged automatically.
 
 ## License
 
