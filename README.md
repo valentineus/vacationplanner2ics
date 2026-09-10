@@ -148,7 +148,7 @@ cd vacationplanner2ics
 docker compose up -d --build app
 ```
 
-## CI and dependency updates
+## CI
 
 [Gitea Actions](https://code.popov.link/valentineus/vacationplanner2ics/actions)
 and [GitHub Actions](https://github.com/valentineus/vacationplanner2ics/actions)
@@ -162,21 +162,10 @@ Both workflows build natively on AMD64, limit compilation to two jobs and packag
 the already-tested binary. Gitea reuses the runner's BuildKit/Cargo caches;
 GitHub saves Docker build layers in its Actions cache.
 
-Gitea publishing uses the Actions secret `REGISTRY_TOKEN`, belonging to `valentineus`
-with `write:package` permission. GitHub uses its automatic `GITHUB_TOKEN` with
-`packages: write`; no extra publishing secret is needed. No Vacationplanner
-token is used in either CI.
-
-Renovate runs on Gitea daily or manually, using `RENOVATE_TOKEN` for Gitea and
-`RENOVATE_GITHUB_TOKEN` for dependency metadata. Non-major updates are grouped;
-updates require review and are not merged automatically.
-
 ## License
 
 [MIT](LICENSE)
 
 ---
 
-Repository locations: [Gitea — canonical source](https://code.popov.link/valentineus/vacationplanner2ics) · [GitHub — secondary mirror](https://github.com/valentineus/vacationplanner2ics).
-
-Changes are pushed to Gitea and automatically mirrored to GitHub.
+Repository locations: [canonical source](https://code.popov.link/valentineus/vacationplanner2ics) · [github](https://github.com/valentineus/vacationplanner2ics) · [read-only mirror](https://git.popov.link/popov.link/vacationplanner2ics/)
