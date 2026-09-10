@@ -6,9 +6,11 @@ It only calls `GET /v1/vacations/year/{year}`.
 
 ## Run
 
-Run the published `linux/amd64` image:
+The registry requires authentication. Log in with a `packager` token that has
+`read:package` permission, then run the published `linux/amd64` image:
 
 ```sh
+docker login code.popov.link --username packager
 docker run -d --name vacationplanner2ics --restart unless-stopped --read-only \
   -p 127.0.0.1:8080:8080 code.popov.link/packager/vacationplanner2ics:latest
 ```
