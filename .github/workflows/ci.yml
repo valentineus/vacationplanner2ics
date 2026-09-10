@@ -37,8 +37,17 @@ jobs:
       - name: Check Docker
         run: docker version
 
+      - uses: docker/setup-buildx-action@v4
+
       - name: Check formatting, lint and build the release binary
-        run: docker build --target test --tag "$TEST_IMAGE" .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: test
+          tags: ${{ env.TEST_IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Run E2E tests without network access
         run: >-
@@ -47,11 +56,16 @@ jobs:
           --memory 256m --cpus 2 --pids-limit 128 "$TEST_IMAGE"
 
       - name: Build the runtime image from the tested binary
-        run: >-
-          docker build --target runtime
-          --label "org.opencontainers.image.revision=$REVISION"
-          --label "org.opencontainers.image.source=$SOURCE"
-          --tag "$IMAGE:sha-$REVISION" .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          tags: ${{ env.IMAGE }}:sha-${{ env.REVISION }}
+          labels: |
+            org.opencontainers.image.revision=${{ env.REVISION }}
+            org.opencontainers.image.source=${{ env.SOURCE }}
+          load: true
+          cache-from: type=gha
 
       - name: Smoke-test the runtime image
         run: |

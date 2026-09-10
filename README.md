@@ -4,41 +4,83 @@ A small, stateless Rust service that turns [Vacationplanner](https://vacationpla
 vacations into an iCalendar subscription for Apple Calendar and other calendar apps.
 It only calls `GET /v1/vacations/year/{year}`.
 
-## Run
+## Ready-made Docker images
 
-The registry requires authentication. Log in with a `packager` token that has
-`read:package` permission, then run the published `linux/amd64` image:
+Both registries provide the same service for `linux/amd64`. Each platform tests,
+builds and publishes its own image:
+
+| Registry | Package | Image |
+| --- | --- | --- |
+| GitHub Container Registry | [GitHub package](https://github.com/valentineus/vacationplanner2ics/pkgs/container/vacationplanner2ics) | `ghcr.io/valentineus/vacationplanner2ics:latest` |
+| Gitea Container Registry | [Gitea package](https://code.popov.link/packager/-/packages/container/vacationplanner2ics/latest) | `code.popov.link/packager/vacationplanner2ics:latest` |
+
+Available tags:
+
+- `latest`: the latest successful `master` build on that platform.
+- `sha-<full-commit-sha>`: the tested commit.
+- `v*`: the corresponding Git tag; does not overwrite `latest`.
+
+Pull from GitHub:
+
+```sh
+docker pull ghcr.io/valentineus/vacationplanner2ics:latest
+```
+
+Gitea currently requires a `packager` token with `read:package` permission.
+Enter the token at the password prompt:
 
 ```sh
 docker login code.popov.link --username packager
-docker run -d --name vacationplanner2ics --restart unless-stopped --read-only \
-  -p 127.0.0.1:8080:8080 code.popov.link/packager/vacationplanner2ics:latest
+docker pull code.popov.link/packager/vacationplanner2ics:latest
 ```
 
-Or build from source with Docker Compose (also works natively on ARM64):
+## Self-hosted usage
+
+Docker is the only runtime requirement. Start either image, for example:
 
 ```sh
-docker compose up -d --build app
+docker run -d --name vacationplanner2ics --restart unless-stopped --read-only \
+  -p 127.0.0.1:8080:8080 ghcr.io/valentineus/vacationplanner2ics:latest
 ```
 
-The service listens on `127.0.0.1:8080`. `GET /healthz` returns `ok`.
-For public access, put an HTTPS reverse proxy in front of it.
+To use Gitea, replace the image name with the Gitea image listed above.
+Verify that the service is ready:
+
+```sh
+curl --fail http://127.0.0.1:8080/healthz
+```
+
+The expected response is `ok`. The example exposes the service on
+`127.0.0.1:8080`; for public access, put an HTTPS reverse proxy in front of it.
 The image serves HTTP only. Its `scratch` filesystem contains a static musl binary
 and CA certificates for outgoing HTTPS requests, with no shell or package manager.
 It runs as an unprivileged user.
 
-## Subscribe
+## Calendar subscription and privacy
 
-Add a calendar subscription using this URL, replacing the host and placeholder:
+**Self-hosting is recommended. Do not blindly trust any hosted instance,
+including the maintainer's.** Subscription URLs contain your Vacationplanner
+API token. Service operators and hosting, CDN or proxy providers that terminate
+HTTPS can read the full request URL, including its GET parameters. HTTPS protects
+the connection; it does not hide the token from those operators.
+
+The maintainer's instance is at [vacationplanner.popov.link](https://vacationplanner.popov.link/).
+Query-string logging is disabled on the maintainer's server, but that is not a
+guarantee of confidentiality across the infrastructure. Use it only if you accept
+that trust requirement. Be careful with subscription URLs and prefer a server
+you control.
+
+Add a calendar subscription using this URL, replacing the token placeholder.
+For self-hosting, also replace the host with your own:
 
 ```text
-https://calendar.example.com/calendar.ics?token=YOUR_API_TOKEN
+https://vacationplanner.popov.link/calendar.ics?token=YOUR_API_TOKEN
 ```
 
 To select years:
 
 ```text
-https://calendar.example.com/calendar.ics?token=YOUR_API_TOKEN&years=2026,2027,2028
+https://vacationplanner.popov.link/calendar.ics?token=YOUR_API_TOKEN&years=2026,2027,2028
 ```
 
 | Query parameter | Meaning |
@@ -97,28 +139,46 @@ access disabled. They cover calendar parsing with an independent iCalendar
 library, year selection, input/upstream failures and subscription updates.
 Tests use fake credentials only.
 
+## Building from source
+
+Clone the canonical repository and build with Docker Compose. This also works
+natively on ARM64:
+
+```sh
+git clone https://code.popov.link/valentineus/vacationplanner2ics.git
+cd vacationplanner2ics
+docker compose up -d --build app
+```
+
 ## CI and dependency updates
 
 [Gitea Actions](https://code.popov.link/valentineus/vacationplanner2ics/actions)
-runs one CI workflow for `master` pushes, pull requests, `v*` tags and manual runs: formatting,
+and [GitHub Actions](https://github.com/valentineus/vacationplanner2ics/actions)
+run independent CI workflows for `master` pushes, pull requests, `v*` tags and manual runs: formatting,
 Clippy with warnings denied, release compilation, the four E2E tests without
 network access, and an HTTP/shutdown check of the actual runtime image.
-Only successful `master` builds and `v*` tags publish images to
-`code.popov.link/packager/vacationplanner2ics`:
+Only successful `master` builds and `v*` tags publish images. Gitea publishes
+only to `code.popov.link`; GitHub publishes only to `ghcr.io`.
 
-- `latest`: the latest successful `master` build.
-- `sha-<full-commit-sha>`: the tested commit.
-- `v*`: the corresponding Git tag; does not overwrite `latest`.
+Both workflows build natively on AMD64, limit compilation to two jobs and package
+the already-tested binary. Gitea reuses the runner's BuildKit/Cargo caches;
+GitHub saves Docker build layers in its Actions cache.
 
-CI uses the runner's native AMD64 architecture, reuses BuildKit/Cargo caches,
-limits compilation to two jobs and packages the already-tested binary.
-Publishing requires the Actions secret `REGISTRY_TOKEN`, belonging to `packager`
-with `write:package` permission. No Vacationplanner token is used in CI.
+Gitea publishing uses the Actions secret `REGISTRY_TOKEN`, belonging to `packager`
+with `write:package` permission. GitHub uses its automatic `GITHUB_TOKEN` with
+`packages: write`; no extra publishing secret is needed. No Vacationplanner
+token is used in either CI.
 
-Renovate runs daily or manually, using `RENOVATE_TOKEN` for Gitea and
+Renovate runs on Gitea daily or manually, using `RENOVATE_TOKEN` for Gitea and
 `RENOVATE_GITHUB_TOKEN` for dependency metadata. Non-major updates are grouped;
 updates require review and are not merged automatically.
 
 ## License
 
 [MIT](LICENSE)
+
+---
+
+Repository locations: [Gitea — canonical source](https://code.popov.link/valentineus/vacationplanner2ics) · [GitHub — secondary mirror](https://github.com/valentineus/vacationplanner2ics).
+
+Changes are pushed to Gitea and automatically mirrored to GitHub.
