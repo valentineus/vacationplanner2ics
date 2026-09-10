@@ -12,7 +12,7 @@ builds and publishes its own image:
 | Registry | Package | Image |
 | --- | --- | --- |
 | GitHub Container Registry | [GitHub package](https://github.com/valentineus/vacationplanner2ics/pkgs/container/vacationplanner2ics) | `ghcr.io/valentineus/vacationplanner2ics:latest` |
-| Gitea Container Registry | [Gitea package](https://code.popov.link/packager/-/packages/container/vacationplanner2ics/latest) | `code.popov.link/packager/vacationplanner2ics:latest` |
+| Gitea Container Registry | [Gitea package](https://code.popov.link/valentineus/-/packages/container/vacationplanner2ics/latest) | `code.popov.link/valentineus/vacationplanner2ics:latest` |
 
 Available tags:
 
@@ -26,12 +26,10 @@ Pull from GitHub:
 docker pull ghcr.io/valentineus/vacationplanner2ics:latest
 ```
 
-Gitea currently requires a `packager` token with `read:package` permission.
-Enter the token at the password prompt:
+Or pull from Gitea:
 
 ```sh
-docker login code.popov.link --username packager
-docker pull code.popov.link/packager/vacationplanner2ics:latest
+docker pull code.popov.link/valentineus/vacationplanner2ics:latest
 ```
 
 ## Self-hosted usage
@@ -164,7 +162,7 @@ Both workflows build natively on AMD64, limit compilation to two jobs and packag
 the already-tested binary. Gitea reuses the runner's BuildKit/Cargo caches;
 GitHub saves Docker build layers in its Actions cache.
 
-Gitea publishing uses the Actions secret `REGISTRY_TOKEN`, belonging to `packager`
+Gitea publishing uses the Actions secret `REGISTRY_TOKEN`, belonging to `valentineus`
 with `write:package` permission. GitHub uses its automatic `GITHUB_TOKEN` with
 `packages: write`; no extra publishing secret is needed. No Vacationplanner
 token is used in either CI.

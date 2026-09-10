@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      IMAGE: code.popov.link/packager/vacationplanner2ics
+      IMAGE: code.popov.link/valentineus/vacationplanner2ics
       TEST_IMAGE: vacationplanner2ics-test:ci-${{ gitea.run_id }}
       SMOKE_CONTAINER: vacationplanner2ics-ci-${{ gitea.run_id }}
       REVISION: ${{ gitea.sha }}
@@ -82,13 +82,13 @@ jobs:
         run: |
           set -eu
           if [ -z "$REGISTRY_TOKEN" ]; then
-            echo 'Add the REGISTRY_TOKEN Actions secret: a packager PAT with write:package.' >&2
+            echo 'Add the REGISTRY_TOKEN Actions secret: a valentineus PAT with write:package.' >&2
             exit 1
           fi
           export DOCKER_CONFIG
           DOCKER_CONFIG="$(mktemp -d)"
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-          printf '%s' "$REGISTRY_TOKEN" | docker login code.popov.link --username packager --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login code.popov.link --username valentineus --password-stdin
           docker push "$IMAGE:sha-$REVISION"
           if [ "$REF" = refs/heads/master ]; then
             docker tag "$IMAGE:sha-$REVISION" "$IMAGE:latest"
