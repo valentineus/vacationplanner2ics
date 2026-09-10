@@ -1,5 +1,21 @@
 services:
+  app:
+    build:
+      context: .
+      target: runtime
+    environment:
+      API_URL: ${API_URL:-https://api.vacationplanner.ru}
+      UPSTREAM_TIMEOUT_SECONDS: ${UPSTREAM_TIMEOUT_SECONDS:-15}
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 65s
+
   dev:
+    profiles: [dev]
     image: rust:1.98.1-bookworm
     working_dir: /workspace
     command: sleep infinity
@@ -10,6 +26,16 @@ services:
       - cargo-target:/workspace/target
     ports:
       - "127.0.0.1:8080:8080"
+
+  test:
+    profiles: [test]
+    build:
+      context: .
+      target: test
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 
 volumes:
   cargo-registry:

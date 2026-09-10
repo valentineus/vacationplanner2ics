@@ -2,6 +2,7 @@
   "name": "vacationplanner2ics",
   "dockerComposeFile": "../compose.yaml",
   "service": "dev",
+  "runServices": ["dev"],
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
   "customizations": {
