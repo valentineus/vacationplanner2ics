@@ -1,0 +1,9 @@
+/target/
+/.env
+/.env.*
+!/.env.example
+*.ics
+*.pem
+*.key
+.DS_Store
+__pycache__/

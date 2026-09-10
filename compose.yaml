@@ -1,0 +1,16 @@
+services:
+  dev:
+    image: rust:1.98.1-bookworm
+    working_dir: /workspace
+    command: sleep infinity
+    init: true
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-target:/workspace/target
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  cargo-registry:
+  cargo-target:

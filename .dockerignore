@@ -1,0 +1,9 @@
+.git
+.DS_Store
+.env
+.env.*
+target
+*.ics
+*.pem
+*.key
+__pycache__
