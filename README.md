@@ -54,9 +54,6 @@ The image serves HTTP only. Its `scratch` filesystem contains a static musl bina
 and CA certificates for outgoing HTTPS requests, with no shell or package manager.
 It runs as an unprivileged user.
 
-The maintainer's [VPS deployment files](deploy/README.md) provide a systemd
-unit for Podman, an nginx configuration and a plain HTML usage page.
-
 ## Calendar subscription and privacy
 
 **Self-hosting is recommended. Do not blindly trust any hosted instance,
