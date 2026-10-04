@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.98.1-alpine3.22 AS build
+FROM rust:1.99.0-alpine3.22 AS build
 RUN apk add --no-cache cmake make
 WORKDIR /build
 ARG TARGETARCH

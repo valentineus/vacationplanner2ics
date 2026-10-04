@@ -16,7 +16,7 @@ services:
 
   dev:
     profiles: [dev]
-    image: rust:1.98.1-bookworm
+    image: rust:1.99.0-bookworm
     working_dir: /workspace
     command: sleep infinity
     init: true
