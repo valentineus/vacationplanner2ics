@@ -1,13 +1,14 @@
+name: vacationplanner2ics
+
 services:
   app:
-    build:
-      context: .
-      target: runtime
+    image: ${IMAGE:-code.popov.link/valentineus/vacationplanner2ics:latest}
+    pull_policy: always
+    network_mode: host
     environment:
+      BIND_ADDR: 127.0.0.1:${HTTP_PORT:-8080}
       API_URL: ${API_URL:-https://api.vacationplanner.ru}
       UPSTREAM_TIMEOUT_SECONDS: ${UPSTREAM_TIMEOUT_SECONDS:-15}
-    ports:
-      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]

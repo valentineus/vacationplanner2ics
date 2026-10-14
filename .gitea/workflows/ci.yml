@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: ci-${{ gitea.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -19,6 +19,8 @@ jobs:
     name: Test and publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
     env:
       IMAGE: code.popov.link/valentineus/vacationplanner2ics
       TEST_IMAGE: vacationplanner2ics-test:ci-${{ gitea.run_id }}
@@ -75,6 +77,7 @@ jobs:
           test "$(docker inspect --format '{{.State.ExitCode}}' "$SMOKE_CONTAINER")" = 0
 
       - name: Publish to Gitea Container Registry
+        id: publish
         if: >-
           gitea.event_name != 'pull_request' &&
           (gitea.ref == 'refs/heads/master' || startsWith(gitea.ref, 'refs/tags/v'))
@@ -96,10 +99,130 @@ jobs:
             TAG="${REF#refs/tags/v}"
           fi
           docker tag "$RUNTIME_IMAGE" "$IMAGE:$TAG"
+          docker tag "$RUNTIME_IMAGE" "$IMAGE:sha-$REVISION"
+          docker push "$IMAGE:sha-$REVISION"
           docker push "$IMAGE:$TAG"
+          printf 'image=%s:sha-%s\n' "$IMAGE" "$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Remove temporary containers and image tags
         if: always()
         run: |
           docker rm -f "$SMOKE_CONTAINER" 2>/dev/null || true
           docker image rm "$TEST_IMAGE" "$RUNTIME_IMAGE" 2>/dev/null || true
+
+  deploy-server:
+    name: Deploy published image to production
+    needs: ci
+    if: >-
+      gitea.ref == 'refs/heads/master' &&
+      (gitea.event_name == 'push' || gitea.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      IMAGE: ${{ needs.ci.outputs.image }}
+      DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+      DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+      DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY_BASE64 }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      REGISTRY_PULL_USERNAME: ${{ secrets.REGISTRY_PULL_USERNAME }}
+      REGISTRY_PULL_TOKEN: ${{ secrets.REGISTRY_PULL_TOKEN }}
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure pinned SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +x
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY_BASE64" | base64 --decode > "$HOME/.ssh/vacationplanner-deploy"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/vacationplanner-deploy_known_hosts"
+          cat > "$HOME/.ssh/vacationplanner-deploy_config" <<EOF
+          Host vacationplanner-deploy
+            HostName $DEPLOY_SSH_HOST
+            User $DEPLOY_SSH_USER
+            Port $DEPLOY_SSH_PORT
+            IdentityFile $HOME/.ssh/vacationplanner-deploy
+            UserKnownHostsFile $HOME/.ssh/vacationplanner-deploy_known_hosts
+            GlobalKnownHostsFile /dev/null
+            StrictHostKeyChecking yes
+            UpdateHostKeys no
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 15
+          EOF
+
+      - name: Stop service
+        shell: bash
+        run: |
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
+            set -e
+            cd '$DEPLOY_PATH'
+            docker compose stop app
+          "
+
+      - name: Upload Compose file
+        shell: bash
+        run: scp -F "$HOME/.ssh/vacationplanner-deploy_config" compose.yaml "vacationplanner-deploy:$DEPLOY_PATH/compose.yaml"
+
+      - name: Pull published image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +x
+          printf '%s' "$REGISTRY_PULL_TOKEN" | ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
+            set -e
+            cd '$DEPLOY_PATH'
+            export DOCKER_CONFIG=\$(mktemp -d)
+            trap 'rm -rf \"\$DOCKER_CONFIG\"' EXIT
+            registry_pull_token=\$(cat)
+            if [ -n \"\$registry_pull_token\" ]; then
+              printf '%s' \"\$registry_pull_token\" | docker login '${IMAGE%%/*}' --username '$REGISTRY_PULL_USERNAME' --password-stdin
+            fi
+            IMAGE='$IMAGE' docker compose pull app
+          "
+
+      - name: Record deployed image
+        shell: bash
+        run: |
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
+            set -e
+            cd '$DEPLOY_PATH'
+            sed -i '/^IMAGE=/d' .env
+            printf '\\nIMAGE=%s\\n' '$IMAGE' >> .env
+          "
+
+      - name: Start service
+        shell: bash
+        run: |
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
+            set -e
+            cd '$DEPLOY_PATH'
+            docker compose up --pull never --detach --force-recreate app
+          "
+
+      - name: Check readiness
+        shell: bash
+        run: |
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
+            set -eu
+            cd '$DEPLOY_PATH'
+            container_id=\$(docker compose ps --quiet app)
+            bind_addr=\$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \"\$container_id\" | sed -n 's/^BIND_ADDR=//p')
+            curl --fail --silent --show-error --retry 15 --retry-all-errors \
+              --retry-delay 2 --max-time 3 \"http://\$bind_addr/healthz\" | grep -qx ok
+          "
+
+      - name: Cleanup SSH
+        if: always()
+        shell: bash
+        run: |
+          rm -f -- "$HOME/.ssh/vacationplanner-deploy" \
+            "$HOME/.ssh/vacationplanner-deploy_known_hosts" \
+            "$HOME/.ssh/vacationplanner-deploy_config"
