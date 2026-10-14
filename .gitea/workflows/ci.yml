@@ -126,104 +126,38 @@ jobs:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
       DEPLOY_SSH_PRIVATE_KEY_BASE64: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY_BASE64 }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-      REGISTRY_PULL_USERNAME: ${{ secrets.REGISTRY_PULL_USERNAME }}
-      REGISTRY_PULL_TOKEN: ${{ secrets.REGISTRY_PULL_TOKEN }}
     steps:
       - name: Checkout deployment files
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Configure pinned SSH
+      - name: Deploy and check readiness
         shell: bash
         run: |
           set -Eeuo pipefail
-          set +x
           umask 077
-          mkdir -p "$HOME/.ssh"
-          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY_BASE64" | base64 --decode > "$HOME/.ssh/vacationplanner-deploy"
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/vacationplanner-deploy_known_hosts"
-          cat > "$HOME/.ssh/vacationplanner-deploy_config" <<EOF
-          Host vacationplanner-deploy
-            HostName $DEPLOY_SSH_HOST
-            User $DEPLOY_SSH_USER
-            Port $DEPLOY_SSH_PORT
-            IdentityFile $HOME/.ssh/vacationplanner-deploy
-            UserKnownHostsFile $HOME/.ssh/vacationplanner-deploy_known_hosts
-            GlobalKnownHostsFile /dev/null
-            StrictHostKeyChecking yes
-            UpdateHostKeys no
-            IdentitiesOnly yes
-            BatchMode yes
-            ConnectTimeout 15
-            ConnectionAttempts 3
-            ControlMaster auto
-            ControlPath $HOME/.ssh/vacationplanner-deploy_socket
-            ControlPersist 10m
-            ServerAliveInterval 15
-            ServerAliveCountMax 3
-          EOF
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" -MNf vacationplanner-deploy
+          ssh_directory="$(mktemp -d)"
+          trap 'rm -rf "$ssh_directory"' EXIT
+          printf '%s' "$DEPLOY_SSH_PRIVATE_KEY_BASE64" | base64 --decode > "$ssh_directory/key"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$ssh_directory/known_hosts"
 
-      - name: Upload Compose file
-        shell: bash
-        run: scp -F "$HOME/.ssh/vacationplanner-deploy_config" compose.yaml "vacationplanner-deploy:$DEPLOY_PATH/compose.yaml"
+          ssh -i "$ssh_directory/key" -p "$DEPLOY_SSH_PORT" \
+            -o UserKnownHostsFile="$ssh_directory/known_hosts" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o ConnectTimeout=15 -o ConnectionAttempts=3 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" "
+              set -eu
+              cd '$DEPLOY_PATH'
+              cat > compose.yaml
+              export IMAGE='$IMAGE'
+              docker compose pull app
+              sed -i '/^IMAGE=/d' .env
+              printf '\\nIMAGE=%s\\n' '$IMAGE' >> .env
+              docker compose up --pull never --detach --force-recreate app
 
-      - name: Pull published image
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          set +x
-          printf '%s' "$REGISTRY_PULL_TOKEN" | ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
-            set -e
-            cd '$DEPLOY_PATH'
-            export DOCKER_CONFIG=\$(mktemp -d)
-            trap 'rm -rf \"\$DOCKER_CONFIG\"' EXIT
-            registry_pull_token=\$(cat)
-            if [ -n \"\$registry_pull_token\" ]; then
-              printf '%s' \"\$registry_pull_token\" | docker login '${IMAGE%%/*}' --username '$REGISTRY_PULL_USERNAME' --password-stdin
-            fi
-            IMAGE='$IMAGE' docker compose pull app
-          "
-
-      - name: Record deployed image
-        shell: bash
-        run: |
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
-            set -e
-            cd '$DEPLOY_PATH'
-            sed -i '/^IMAGE=/d' .env
-            printf '\\nIMAGE=%s\\n' '$IMAGE' >> .env
-          "
-
-      - name: Restart service
-        shell: bash
-        run: |
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
-            set -e
-            cd '$DEPLOY_PATH'
-            docker compose stop app
-            docker compose up --pull never --detach --force-recreate app
-          "
-
-      - name: Check readiness
-        shell: bash
-        run: |
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
-            set -eu
-            cd '$DEPLOY_PATH'
-            container_id=\$(docker compose ps --quiet app)
-            bind_addr=\$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \"\$container_id\" | sed -n 's/^BIND_ADDR=//p')
-            curl --fail --silent --show-error --retry 15 --retry-all-errors \
-              --retry-delay 2 --max-time 3 \"http://\$bind_addr/healthz\" | grep -qx ok
-          "
-
-      - name: Cleanup SSH
-        if: always()
-        shell: bash
-        run: |
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" -O exit vacationplanner-deploy 2>/dev/null || true
-          rm -f -- "$HOME/.ssh/vacationplanner-deploy" \
-            "$HOME/.ssh/vacationplanner-deploy_known_hosts" \
-            "$HOME/.ssh/vacationplanner-deploy_config" \
-            "$HOME/.ssh/vacationplanner-deploy_socket"
+              bind_addr=\$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \"\$(docker compose ps --quiet app)\" | sed -n 's/^BIND_ADDR=//p')
+              curl --fail --silent --show-error --retry 15 --retry-all-errors \
+                --retry-delay 2 --max-time 3 \"http://\$bind_addr/healthz\" | grep -qx ok
+            " < compose.yaml
