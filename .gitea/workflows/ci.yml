@@ -99,10 +99,8 @@ jobs:
             TAG="${REF#refs/tags/v}"
           fi
           docker tag "$RUNTIME_IMAGE" "$IMAGE:$TAG"
-          docker tag "$RUNTIME_IMAGE" "$IMAGE:sha-$REVISION"
-          docker push "$IMAGE:sha-$REVISION"
           docker push "$IMAGE:$TAG"
-          printf 'image=%s:sha-%s\n' "$IMAGE" "$REVISION" >> "$GITHUB_OUTPUT"
+          printf 'image=%s:%s\n' "$IMAGE" "$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Remove temporary containers and image tags
         if: always()
