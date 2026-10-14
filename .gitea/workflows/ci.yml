@@ -156,16 +156,14 @@ jobs:
             IdentitiesOnly yes
             BatchMode yes
             ConnectTimeout 15
+            ConnectionAttempts 3
+            ControlMaster auto
+            ControlPath $HOME/.ssh/vacationplanner-deploy_socket
+            ControlPersist 10m
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
           EOF
-
-      - name: Stop service
-        shell: bash
-        run: |
-          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
-            set -e
-            cd '$DEPLOY_PATH'
-            docker compose stop app
-          "
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" -MNf vacationplanner-deploy
 
       - name: Upload Compose file
         shell: bash
@@ -198,12 +196,13 @@ jobs:
             printf '\\nIMAGE=%s\\n' '$IMAGE' >> .env
           "
 
-      - name: Start service
+      - name: Restart service
         shell: bash
         run: |
           ssh -F "$HOME/.ssh/vacationplanner-deploy_config" vacationplanner-deploy "
             set -e
             cd '$DEPLOY_PATH'
+            docker compose stop app
             docker compose up --pull never --detach --force-recreate app
           "
 
@@ -223,6 +222,8 @@ jobs:
         if: always()
         shell: bash
         run: |
+          ssh -F "$HOME/.ssh/vacationplanner-deploy_config" -O exit vacationplanner-deploy 2>/dev/null || true
           rm -f -- "$HOME/.ssh/vacationplanner-deploy" \
             "$HOME/.ssh/vacationplanner-deploy_known_hosts" \
-            "$HOME/.ssh/vacationplanner-deploy_config"
+            "$HOME/.ssh/vacationplanner-deploy_config" \
+            "$HOME/.ssh/vacationplanner-deploy_socket"
